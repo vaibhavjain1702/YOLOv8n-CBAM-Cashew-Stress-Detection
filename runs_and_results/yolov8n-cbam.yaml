@@ -1,0 +1,42 @@
+
+# YOLOv8n-CBAM: Modified YOLOv8 with CBAM attention modules
+# Pre-scaled to YOLOv8n size (width=0.25, depth=0.33 applied manually)
+# Modifications:
+#   1. CBAM blocks after C2f in backbone for better feature selection
+#   2. Attention helps model focus on disease/pest-affected regions
+
+nc: 3
+
+backbone:
+  # [from, repeats, module, args]
+  - [-1, 1, Conv, [16, 3, 2]]       # 0: P1/2   - 16ch (64*0.25)
+  - [-1, 1, Conv, [32, 3, 2]]       # 1: P2/4   - 32ch (128*0.25)
+  - [-1, 1, C2f, [32, True]]        # 2: feature extraction (depth: round(3*0.33)=1)
+  - [-1, 1, CBAM, [32]]             # 3: ★ CBAM attention
+  - [-1, 1, Conv, [64, 3, 2]]       # 4: P3/8   - 64ch (256*0.25)
+  - [-1, 2, C2f, [64, True]]        # 5: feature extraction (depth: round(6*0.33)=2)
+  - [-1, 1, CBAM, [64]]             # 6: ★ CBAM attention
+  - [-1, 1, Conv, [128, 3, 2]]      # 7: P4/16  - 128ch (512*0.25)
+  - [-1, 2, C2f, [128, True]]       # 8: feature extraction (depth: round(6*0.33)=2)
+  - [-1, 1, Conv, [256, 3, 2]]      # 9: P5/32  - 256ch (1024*0.25)
+  - [-1, 1, C2f, [256, True]]       # 10: feature extraction (depth: round(3*0.33)=1)
+  - [-1, 1, SPPF, [256, 5]]         # 11: spatial pyramid pooling
+
+head:
+  - [-1, 1, nn.Upsample, [None, 2, 'nearest']]  # 12: upsample
+  - [[-1, 8], 1, Concat, [1]]                     # 13: concat with P4 backbone feature
+  - [-1, 1, C2f, [128]]                           # 14: fuse P4+P5
+
+  - [-1, 1, nn.Upsample, [None, 2, 'nearest']]  # 15: upsample
+  - [[-1, 6], 1, Concat, [1]]                     # 16: concat with P3 (CBAM-enhanced)
+  - [-1, 1, C2f, [64]]                            # 17: fuse P3+P4 — detect small objects
+
+  - [-1, 1, Conv, [64, 3, 2]]                    # 18: downsample
+  - [[-1, 14], 1, Concat, [1]]                    # 19: concat with fused P4
+  - [-1, 1, C2f, [128]]                           # 20: fuse — detect medium objects
+
+  - [-1, 1, Conv, [128, 3, 2]]                   # 21: downsample
+  - [[-1, 11], 1, Concat, [1]]                    # 22: concat with SPPF output
+  - [-1, 1, C2f, [256]]                           # 23: fuse — detect large objects
+
+  - [[17, 20, 23], 1, Detect, [nc]]              # 24: multi-scale detection head

@@ -1,0 +1,8 @@
+path: /content/datasets/CADI-AI
+train: images/train
+val: images/val
+test: images/test
+names:
+  0: abiotic
+  1: insect
+  2: disease
